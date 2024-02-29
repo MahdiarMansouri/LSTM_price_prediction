@@ -69,7 +69,10 @@ class LSTM_GRU_Model(nn.Module):
         self.lstm = nn.LSTM(hidden_layer_size, hidden_layer_size, batch_first=True)
 
         # GRU Layer - input size matches LSTM output size (hidden_layer_size)
-        self.gru = nn.GRU(hidden_layer_size, hidden_layer_size, batch_first=True)
+        self.gru = nn.GRU(hidden_layer_size, hidden_layer_size // 2, batch_first=True)
+        self.s_gru = nn.GRU(hidden_layer_size // 2, hidden_layer_size //4, batch_first=True)
+        self.s2_gru = nn.GRU(hidden_layer_size // 4, hidden_layer_size, batch_first=True)
+        self.gru_after_bi = nn.GRU(hidden_layer_size * 2, hidden_layer_size, batch_first=True)
 
         # Linear layer to get to the output size
         self.linear = nn.Linear(hidden_layer_size, output_size)
@@ -78,11 +81,16 @@ class LSTM_GRU_Model(nn.Module):
         # LSTM layer
         lstm_out, _ = self.init_lstm(input_seq)
         # lstm_out, _ = self.lstm(lstm_out)
+        # lstm_out, _ = self.lstm(lstm_out)
+        # lstm_out, _ = self.lstm(lstm_out)
 
         # GRU layer
         gru_out, _ = self.gru(lstm_out)
-        lstm_out, _ = self.lstm(gru_out)
-        gru_out, _ = self.gru(lstm_out)
+        # lstm_out, _ = self.lstm(gru_out)
+        gru_out, _ = self.s_gru(gru_out)
+        gru_out, _ = self.s2_gru(gru_out)
+        # gru_out, _ = self.gru(gru_out)
+        # gru_out, _ = self.gru(gru_out)
 
 
         # We use the output of the GRU layer for our predictions
@@ -127,9 +135,9 @@ def evaluate_model(model, test_data, scaler):
     actual_prices_scaled = scaler.inverse_transform(np.array(actual_prices).reshape(-1, 1))
 
     # Calculate Mean Squared Error
-    mse = np.mean((predicted_prices_scaled - actual_prices_scaled) ** 2)
-    print(f'Mean Squared Error: {mse}')
-    return mse
+    rmse = np.sqrt(np.mean((predicted_prices_scaled - actual_prices_scaled) ** 2))
+    print(f'Root Mean Squared Error: {rmse}')
+    return rmse
 
 
 def rolling_window_evaluation(model, data, scaler, seq_length, last_n_days=30):
@@ -164,13 +172,10 @@ def rolling_window_evaluation(model, data, scaler, seq_length, last_n_days=30):
     actuals_scaled = scaler.inverse_transform(np.array(actuals).reshape(-1, 1))
 
     # Calculate Mean Squared Error
-    mse = np.mean((predictions_scaled - actuals_scaled) ** 2)
-    print(f'Mean Squared Error over last {last_n_days} days: {mse}')
+    rmse = np.sqrt(np.mean((predictions_scaled - actuals_scaled) ** 2))
+    print(f'Root Mean Squared Error over last {last_n_days} days: {rmse}')
 
     return predictions_scaled, actuals_scaled
-
-
-import matplotlib.pyplot as plt
 
 
 def plot_predictions(df, predictions_scaled, last_n_days=30):
@@ -196,7 +201,7 @@ def plot_predictions(df, predictions_scaled, last_n_days=30):
 
 if __name__ == "__main__":
     filepath = 'BTC-USD.csv'
-    seq_length = 5
+    seq_length = 20
 
     # Load and normalize data, excluding the last 30 days from the training data
     training_data, full_data, scaler, df = load_and_normalize_data(filepath)
@@ -211,7 +216,7 @@ if __name__ == "__main__":
     #     break  # Just to check the first batch
 
     # Instantiate the model, define loss and optimizer
-    model = LSTM_GRU_Model(hidden_layer_size=2048)
+    model = LSTM_GRU_Model(hidden_layer_size=3200)
     loss_function = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -226,7 +231,7 @@ if __name__ == "__main__":
     # train_sequences = train_sequences.to(device)
 
     # Train the model
-    train_model(model, train_loader, loss_function, optimizer, epochs=50)
+    train_model(model, train_loader, loss_function, optimizer, epochs=100)
 
 
     # Evaluate the model using the rolling window approach on the last 30 days
