@@ -3,20 +3,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, TensorDataset
 from datetime import datetime
+import plotly.express
 
 
 def load_and_normalize_data(filepath, last_n_days=30):
     df = pd.read_csv(filepath)
-    scaler = MinMaxScaler(feature_range=(-1, 1))
     close_prices = df[['Close']].values
+    print(len(close_prices))
+    print(close_prices.shape)
     # Normalize the data
-    normalized_data = scaler.fit_transform(close_prices)
     # Exclude the last 30 days for the training set
-    training_data = normalized_data[:-last_n_days]
-    return torch.FloatTensor(training_data), torch.FloatTensor(normalized_data), scaler, df
+    training_data = close_prices[:-last_n_days]
+    testing_data = close_prices[-last_n_days:]
+    return torch.FloatTensor(training_data), torch.FloatTensor(testing_data), torch.FloatTensor(close_prices)
 
 
 def create_inout_sequences(input_data, tw):
@@ -26,6 +27,7 @@ def create_inout_sequences(input_data, tw):
         train_seq = input_data[i:i + tw]
         train_label = input_data[i + tw:i + tw + 1]
         inout_seq.append((train_seq, train_label))
+        print(inout_seq.shape)
     return inout_seq
 
 
@@ -115,9 +117,53 @@ def train_model(model, train_loader, loss_function, optimizer, epochs=10):
             single_loss.backward()
             optimizer.step()
 
-        # if i % 2 == 0:
         timing = datetime.now() - s0
         print(f'Epoch {i} | loss: {single_loss.item()} | time: {timing}')
+
+
+def train_val_model(model, train_loader, test_loader, loss_function, optimizer, epochs=10):
+    for i in range(epochs):
+        # train loop
+        train_loss_list = []
+        train_running_loss = 0.0
+        s0 = datetime.now()
+        for seq, labels in train_loader:
+            optimizer.zero_grad()
+
+            y_pred = model(seq)
+            labels = labels.view(-1, 1)
+
+            single_loss = loss_function(y_pred, labels)
+            train_running_loss += single_loss.item()
+            single_loss.backward()
+            optimizer.step()
+
+        # Calculate train loss
+        train_loss = train_running_loss / len(train_loader)
+        train_loss_list.append(train_loss)
+
+        # test loop
+        val_loss_list = []
+        val_running_loss = 0.0
+        model.eval()
+        test_predictions = []
+        actual_prices = []
+        with torch.no_grad():
+            for seq, labels in test_loader:
+                predict_price = model(seq).item()
+                labels = labels.view(-1, 1)
+
+                test_predictions.append(predict_price)
+                actual_prices.append(labels.item())
+
+                single_loss = loss_function(predict_price, labels)
+                val_running_loss += single_loss.item()
+
+        val_loss = val_running_loss / len(test_loader)
+        val_loss_list.append(val_loss)
+
+        timing = datetime.now() - s0
+        print(f'Epoch {i} | train_loss: {train_loss} | val_loss: {val_loss} | time: {timing}')
 
 
 def evaluate_model(model, test_data, scaler):
@@ -178,7 +224,7 @@ def rolling_window_evaluation(model, data, scaler, seq_length, last_n_days=30):
     return predictions_scaled, actuals_scaled
 
 
-def plot_predictions(df, predictions_scaled, last_n_days=30):
+def plot_predictions(full_data, predict_data, last_n_days=30):
     # Plot the full dataset
     plt.figure(figsize=(14, 7))
     plt.plot(df.index, df['Close'], label='Actual Prices', color='grey', alpha=0.5)
@@ -204,7 +250,7 @@ if __name__ == "__main__":
     seq_length = 90
 
     # Load and normalize data, excluding the last 30 days from the training data
-    training_data, full_data, scaler, df = load_and_normalize_data(filepath)
+    training_data, full_data, df = load_and_normalize_data(filepath)
 
     # Create inout sequences for the training data
     train_sequences = create_inout_sequences(training_data, seq_length)
