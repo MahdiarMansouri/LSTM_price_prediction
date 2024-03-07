@@ -199,7 +199,7 @@ def plot_predictions(df, predictions_scaled, last_n_days=30):
 
 
 if __name__ == "__main__":
-    filepath = 'EURUSD=X(1).csv'
+    filepath = 'data/EURUSD=X(1).csv'
     seq_length = 90
 
     # Load and normalize data, excluding the last 30 days from the training data
