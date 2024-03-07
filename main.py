@@ -127,8 +127,7 @@ def evaluate_model(model, test_data, scaler):
     with torch.no_grad():
         for seq, labels in test_data:
             model.hidden = (torch.zeros(1, 1, model.hidden_layer_size),
-                            torch.zeros(1, 1, model.hidden_layer_size))
-            test_predictions.append(model(seq).item())
+                            torch.zeros(1, 1, model.hidden_layer_size))            test_predictions.append(model(seq).item())
             actual_prices.append(labels.item())
 
     predicted_prices_scaled = scaler.inverse_transform(np.array(test_predictions).reshape(-1, 1))
